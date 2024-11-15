@@ -8,6 +8,8 @@ from rest_framework.decorators import api_view, permission_classes
 from django.views.decorators.csrf import ensure_csrf_cookie
 from account.serializers import UserSerializer
 from account.utils import generate_access_token, generate_refresh_token
+from rest_framework.views import APIView
+from rest_framework.response import Response
 
 
 @api_view(['GET'])
@@ -17,36 +19,29 @@ def profile(request):
     return Response({'user': serialized_user })
 
 
+# @ensure_csrf_cookie
+class Login(APIView):
+    permission_classes = [AllowAny,]
+    serializer_class = UserSerializer
 
+    def post(self, request):
+        print("hello ?")
+        print(request.data)
+        User = get_user_model()
+        email = request.data.get('email')
+        password = request.data.get('password')
 
+        user = User.objects.filter(email=email).first()
+        if (email is None) or (password is None) or (user is None) or (not user.check_password(password)):
+            return Response({'Message': 'Invalid Username or Password'}, status=401)
 
-@api_view(['POST'])
-@permission_classes([AllowAny])
-@ensure_csrf_cookie
-def login_view(request):
-    User = get_user_model()
-    username = request.data.get('username')
-    password = request.data.get('password')
-    response = Response()
-    if (username is None) or (password is None):
-        raise exceptions.AuthenticationFailed(
-            'username and password required')
+        serialized_user = self.serializer_class(user).data
+        access_token = generate_access_token(user)
+        refresh_token = generate_refresh_token(user)
+        Response().set_cookie(key='refreshtoken', value=refresh_token, httponly=True)
 
-    user = User.objects.filter(username=username).first()
-    if(user is None):
-        raise exceptions.AuthenticationFailed('user not found')
-    if (not user.check_password(password)):
-        raise exceptions.AuthenticationFailed('wrong password')
+        return Response({
+            'access_token': access_token,
+            # 'user': serialized_user,
+        })
 
-    serialized_user = UserSerializer(user).data
-
-    access_token = generate_access_token(user)
-    refresh_token = generate_refresh_token(user)
-
-    response.set_cookie(key='refreshtoken', value=refresh_token, httponly=True)
-    response.data = {
-        'access_token': access_token,
-        'user': serialized_user,
-    }
-
-    return response
